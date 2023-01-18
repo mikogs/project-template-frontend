@@ -1,0 +1,69 @@
+name: 02. Push docker image version tag
+
+on:
+  push:
+    branches-ignore: 
+      - '*'
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  push-version-tag:
+    name: Tag docker image with version
+    runs-on: ubuntu-22.04
+    env:
+      VAR_FRONTEND_REGISTRY: ${{ vars.FRONTEND_REGISTRY }}
+      VAR_FRONTEND_REPOSITORY: ${{ vars.FRONTEND_REPOSITORY }}
+      SECRET_FRONTEND_REGISTRY_USERNAME: ${{ secrets.FRONTEND_REGISTRY_USERNAME }}
+      SECRET_FRONTEND_REGISTRY_PASSWORD: ${{ secrets.FRONTEND_REGISTRY_PASSWORD }}
+      SECRET_CI_GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2.5.0
+
+      - name: Get branch name and commit SHA
+        id: get-branch
+        uses: ./.github/actions/get-branch
+
+
+      - name: Check if CI_GITHUB_TOKEN is set
+        if: env.SECRET_CI_GITHUB_TOKEN == ''
+        run: |
+          echo "CI_GITHUB_TOKEN secret is required for this workflow to run"
+          exit 1
+
+      - name: Check if docker registry secrets are set
+        if: env.VAR_FRONTEND_REPOSITORY == '' || env.SECRET_FRONTEND_REGISTRY_USERNAME == '' || env.SECRET_FRONTEND_REGISTRY_PASSWORD == ''
+        run: |
+          echo "Docker registry secrets are required for this workflow to run"
+          exit 1
+
+
+      - name: Check if commit status is 'success'
+        shell: bash
+        run: |
+          curl --http1.1 -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.CI_GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/mikogs/project-template-frontend/commits/${{ steps.get-branch.outputs.sha_long }}/status | jq -r .state > status_output
+          
+          cat status_output
+          cat status_output | grep 'success'
+
+
+      - name: Login to docker registry
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ vars.FRONTEND_REGISTRY }}
+          username: ${{ secrets.FRONTEND_REGISTRY_USERNAME }}
+          password: ${{ secrets.FRONTEND_REGISTRY_PASSWORD }}
+
+      - name: Push docker image to the repository
+        run: |
+          docker pull ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.sha_short }}
+          docker tag ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.sha_short }} ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.tag_name }}
+          docker push ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.tag_name }}

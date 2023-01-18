@@ -1,0 +1,79 @@
+name: _Deploy to devnet
+
+on:
+  workflow_call:
+
+jobs:
+  deploy-to-devenv:
+    runs-on: ubuntu-22.04
+    env:
+      VAR_FRONTEND_REPOSITORY: ${{ vars.FRONTEND_REPOSITORY }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2.5.0
+
+      - name: Get branch name and commit SHA
+        id: get-branch
+        uses: ./.github/actions/get-branch
+
+
+      - name: GIT | Checkout project-template-apps-frontend repository
+        uses: actions/checkout@master
+        with:
+          repository: mikogs/project-template-apps-frontend
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
+          path: "project-template-apps-frontend"
+
+      - name: Init kustomize
+        uses: imranismail/setup-kustomize@v1
+        with:
+          kustomize-version: "3.8.6"
+
+      - name: Replace image tag for devenv
+        env:
+          DOCKER_IMAGE: ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.sha_short }}
+        run: |
+          cd project-template-apps-frontend/overlays/devenv/
+          for r in region region2 region3; do
+            cd $r
+            kustomize edit set image "frontend-image-placeholder=${DOCKER_IMAGE}"
+            cd ..
+          done
+
+      - name: Commit changes to project-template-apps-frontend repository
+        uses: EndBug/add-and-commit@v5.1.0
+        with:
+          author_name: project-template
+          author_email: project-template@f0x.pl
+          message: "Update devenv frontend docker image tag to: ${{ steps.get-branch.outputs.sha_short }}"
+          add: "*.yaml"
+          cwd: "project-template-apps-frontend"
+          branch: master
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}
+
+
+      - name: Checkout project-template-envs repository
+        uses: actions/checkout@master
+        with:
+          repository: mikogs/project-template-envs
+          token: ${{ secrets.CI_GITHUB_TOKEN }}
+          path: "project-template-envs"
+          submodules: "recursive"
+
+      - name: Update devenv/frontend submodule
+        run: |
+          cd project-template-envs
+          git submodule update --remote devenv/frontend
+      
+      - name: Commit changes to project-template-envs repository
+        uses: EndBug/add-and-commit@v5.1.0
+        with:
+          author_name: project-template
+          author_email: project-template@f0x.pl
+          message: "Update devenv frontend docker image tag to: ${{ steps.get-branch.outputs.sha_short }}"
+          add: "devenv/frontend"
+          cwd: "project-template-envs"
+          branch: master
+        env:
+          GITHUB_TOKEN: ${{ secrets.CI_GITHUB_TOKEN }}

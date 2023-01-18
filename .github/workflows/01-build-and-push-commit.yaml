@@ -1,0 +1,52 @@
+name: 01. Build and push docker image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  run-unit-tests:
+    name: Run unit tests
+    uses: ./.github/workflows/_run-unit-tests.yaml
+    secrets: inherit
+
+  build-docker-image:
+    needs: ['run-unit-tests']
+    name: Build frontend artifact
+    uses: ./.github/workflows/_build-docker-image.yaml
+    secrets: inherit
+
+  set-success-status:
+    needs: ['build-docker-image']
+    name: Set status of the commit to 'success'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2.5.0
+
+      - name: Get branch name and commit SHA
+        id: get-branch
+        uses: ./.github/actions/get-branch
+
+      - name: Create status
+        run: |
+          curl --request POST --http1.1 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.CI_GITHUB_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d '{"state":"success", "context": "build"}' \
+            https://api.github.com/repos/mikogs/project-template-frontend/statuses/${{ steps.get-branch.outputs.sha_long }}
+
+  deploy-to-devenv:
+    if: github.ref_name == 'master'
+    needs: ['set-success-status']
+    name: Deploy to devenv
+    uses: ./.github/workflows/_deploy-to-devenv.yaml
+    secrets: inherit

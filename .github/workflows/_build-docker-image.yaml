@@ -1,0 +1,38 @@
+name: _Build docker image
+
+on:
+  workflow_call:
+
+jobs:
+  build-docker-image:
+    runs-on: ubuntu-22.04
+    env:
+      VAR_FRONTEND_REGISTRY: ${{ vars.FRONTEND_REGISTRY }}
+      VAR_FRONTEND_REPOSITORY: ${{ vars.FRONTEND_REPOSITORY }}
+      SECRET_FRONTEND_REGISTRY_USERNAME: ${{ secrets.FRONTEND_REGISTRY_USERNAME }}
+      SECRET_FRONTEND_REGISTRY_PASSWORD: ${{ secrets.FRONTEND_REGISTRY_PASSWORD }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2.5.0
+
+      - name: Get branch name and commit SHA
+        id: get-branch
+        uses: ./.github/actions/get-branch
+
+      - name: Build docker image
+        run: |
+          docker build -t frontend:${{ steps.get-branch.outputs.sha_short }} -f Dockerfile .
+
+      - name: Login to docker registry
+        if: env.VAR_FRONTEND_REPOSITORY != '' && env.SECRET_FRONTEND_REGISTRY_USERNAME != '' && env.SECRET_FRONTEND_REGISTRY_PASSWORD != ''
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ vars.FRONTEND_REGISTRY }}
+          username: ${{ secrets.FRONTEND_REGISTRY_USERNAME }}
+          password: ${{ secrets.FRONTEND_REGISTRY_PASSWORD }}
+
+      - name: Push docker image to the repository
+        if: env.VAR_FRONTEND_REPOSITORY != '' && env.SECRET_FRONTEND_REGISTRY_USERNAME != '' && env.SECRET_FRONTEND_REGISTRY_PASSWORD != ''
+        run: |
+          docker tag frontend:${{ steps.get-branch.outputs.sha_short }} ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.sha_short }}
+          docker push ${{ vars.FRONTEND_REPOSITORY }}:${{ steps.get-branch.outputs.sha_short }}

@@ -1,0 +1,17 @@
+{
+  "env": {
+    "es6": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "rules": {
+    "prefer-const": 2,
+    "no-var": 2
+  },
+  "parserOptions": {
+    "ecmaVersion": 2017,
+    "scriptType": "module"
+  }
+}
