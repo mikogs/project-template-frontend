@@ -1,4 +1,4 @@
-name: N04. Deploy image tag to testenv
+name: 03. Deploy image tag to testenv
 
 on:
   workflow_dispatch:
